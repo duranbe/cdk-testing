@@ -5,32 +5,34 @@ import { StateMachineStack } from "../lib/state-machine-stack";
 import { DeadLetterQueue } from "../lib/queue-construct";
 
 describe("StateMachineStack", () => {
-  test("synthesizes the way we expect", () => {
-    const app = new cdk.App();
+  const app = new cdk.App();
 
-    // Since the StateMachineStack consumes resources from a separate stack
-    // (cross-stack references), we create a stack for our SNS topics to live
-    // in here. These topics can then be passed to the StateMachineStack later,
-    // creating a cross-stack reference.
-    const topicsStack = new cdk.Stack(app, "TopicsStack");
+  // Since the StateMachineStack consumes resources from a separate stack
+  // (cross-stack references), we create a stack for our SNS topics to live
+  // in here. These topics can then be passed to the StateMachineStack later,
+  // creating a cross-stack reference.
+  const topicsStack = new cdk.Stack(app, "TopicsStack");
 
-    // Create the topic the stack we're testing will reference.
-    const topics = [new sns.Topic(topicsStack, "Topic1", {})];
+  // Create the topic the stack we're testing will reference.
+  const topics = [new sns.Topic(topicsStack, "Topic1", {})];
 
-    // Create the StateMachineStack.
-    const stateMachineStack = new StateMachineStack(app, "StateMachineStack", {
-      topics: topics, // Cross-stack reference
-    });
+  // Create the StateMachineStack.
+  const stateMachineStack = new StateMachineStack(app, "StateMachineStack", {
+    topics: topics, // Cross-stack reference
+  });
 
-    // Get Stack Cloudformation Template
-    const template = Template.fromStack(stateMachineStack);
+  // Get Stack Cloudformation Template
+  const template = Template.fromStack(stateMachineStack);
 
+  test("Basic Assertions", () => {
     // Assertions
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "handler",
       Runtime: "nodejs18.x",
     });
+  });
 
+  test("Basic Matchers", () => {
     // Matchers
     template.hasResourceProperties(
       "AWS::IAM::Role",
@@ -49,9 +51,10 @@ describe("StateMachineStack", () => {
         },
       })
     );
+  });
 
+  test("Basic Capture", () => {
     // Capture
-
     const startAtCapture = new Capture();
     const statesCapture = new Capture();
     template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
@@ -71,7 +74,7 @@ describe("StateMachineStack", () => {
     expect(statesCapture.asObject()).toHaveProperty(startAtCapture.asString());
   });
 
-  describe("DeadLetterQueue", () => {
+  describe("DeadLetterQueue Tests", () => {
     test("matches the snapshot", () => {
       const stack = new cdk.Stack();
       new DeadLetterQueue(stack, "DeadLetterQueue");
