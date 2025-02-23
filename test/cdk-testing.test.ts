@@ -2,6 +2,7 @@ import { Capture, Match, Template } from "aws-cdk-lib/assertions";
 import * as cdk from "aws-cdk-lib";
 import * as sns from "aws-cdk-lib/aws-sns";
 import { StateMachineStack } from "../lib/state-machine-stack";
+import { DeadLetterQueue } from "../lib/queue-construct";
 
 describe("StateMachineStack", () => {
   test("synthesizes the way we expect", () => {
@@ -21,16 +22,16 @@ describe("StateMachineStack", () => {
       topics: topics, // Cross-stack reference
     });
 
-    // Prepare the stack for assertions.
+    // Get Stack Cloudformation Template
     const template = Template.fromStack(stateMachineStack);
 
-    // Assert it creates the function with the correct properties...
+    // Assertions
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "handler",
       Runtime: "nodejs18.x",
     });
 
-    // Fully assert on the state machine's IAM role with matchers.
+    // Matchers
     template.hasResourceProperties(
       "AWS::IAM::Role",
       Match.objectEquals({
@@ -41,12 +42,42 @@ describe("StateMachineStack", () => {
               Action: "sts:AssumeRole",
               Effect: "Allow",
               Principal: {
-                Service: Match.stringLikeRegexp("\\S+.amazonaws.com")
+                Service: Match.stringLikeRegexp("\\S+.amazonaws.com"),
               },
             },
           ],
         },
       })
     );
+
+    // Capture
+
+    const startAtCapture = new Capture();
+    const statesCapture = new Capture();
+    template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
+      DefinitionString: Match.serializedJson(
+        Match.objectLike({
+          StartAt: startAtCapture,
+          States: statesCapture,
+        })
+      ),
+    });
+
+    // Assert that the start state starts with "Start".
+    expect(startAtCapture.asString()).toEqual(expect.stringMatching(/^Start/));
+
+    // Assert that the start state actually exists in the states object of the
+    // state machine definition.
+    expect(statesCapture.asObject()).toHaveProperty(startAtCapture.asString());
+  });
+
+  describe("DeadLetterQueue", () => {
+    test("matches the snapshot", () => {
+      const stack = new cdk.Stack();
+      new DeadLetterQueue(stack, "DeadLetterQueue");
+
+      const template = Template.fromStack(stack);
+      expect(template.toJSON()).toMatchSnapshot();
+    });
   });
 });
